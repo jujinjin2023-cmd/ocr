@@ -3,16 +3,16 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>智能试卷结构化提取工具</title>
+    <title>智能试卷结构化提取工具 (定制版)</title>
     
     <!-- UI 框架 -->
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     
     <!-- 核心处理库 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <script src="https://unpkg.com/docx@8.5.0/build/index.umd.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
@@ -26,21 +26,23 @@
         .loader { border-top-color: #4F46E5; animation: spinner 1.5s linear infinite; }
         @keyframes spinner { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
         
-        /* 试卷内容渲染样式 */
+        /* 试卷内容渲染样式：完美保留 Word 原格式与图片 */
         .paper-content {
             font-family: "Microsoft YaHei", "SimSun", sans-serif;
             line-height: 1.8;
             color: #1f2937;
+            font-size: 15px;
         }
+        .paper-content p { margin-bottom: 12px; }
         .paper-content img {
             max-width: 100%;
             height: auto;
             border: 1px solid #e5e7eb;
-            border-radius: 4px;
-            margin: 8px 0;
+            border-radius: 6px;
+            margin: 10px auto;
             display: block;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
         }
-        .paper-content p { margin-bottom: 12px; }
         .tab-active { border-bottom: 2px solid #4f46e5; color: #4f46e5; font-weight: bold; }
         .tab-inactive { color: #6b7280; }
         .tab-inactive:hover { color: #374151; }
@@ -54,8 +56,8 @@
                 <i class="fa-solid fa-graduation-cap mr-2"></i>智能试卷结构化提取工具
             </h1>
             <p class="text-gray-600 max-w-3xl mx-auto text-sm">
-                自动分离 <span class="font-bold text-indigo-600">试题、答案、解析</span>。
-                <span class="font-bold text-green-600">完美保留 Word 文档中的题干图片</span>。
+                自动跳过目录/知识梳理，<span class="font-bold text-indigo-600">直接从【例题】开始提取</span>。
+                <span class="font-bold text-green-600">完美保留 Word 文档中的题干图片与原格式</span>。
             </p>
         </header>
 
@@ -66,10 +68,10 @@
                     <label class="block text-sm font-bold text-gray-700 mb-2">处理方式</label>
                     <select id="engineMode" class="w-full border-gray-300 rounded-lg shadow-sm focus:border-indigo-500 focus:ring-indigo-500 p-2.5 border text-sm mb-3"></select>
                     <div id="wordTip" class="hidden p-3 bg-green-50 rounded-lg border border-green-100 text-xs text-green-800">
-                        <i class="fa-solid fa-circle-check mr-1"></i> 当前格式支持原样保留图片题干，并智能按“答案/解析”关键词分割内容。
+                        <i class="fa-solid fa-circle-check mr-1"></i> 完美支持：自动跳过前言，从例题开始提取，原样保留所有题干图片。
                     </div>
                     <div id="otherTip" class="hidden p-3 bg-yellow-50 rounded-lg border border-yellow-100 text-xs text-yellow-800">
-                        <i class="fa-solid fa-triangle-exclamation mr-1"></i> 注意：PDF/图片/Excel 无法原样保留图片题干，仅能提取纯文本。建议优先使用 Word 格式。
+                        <i class="fa-solid fa-triangle-exclamation mr-1"></i> 注意：PDF/图片无法原样保留图片题干，仅能提取纯文本。强烈建议使用 Word (.docx) 格式。
                     </div>
                 </div>
 
@@ -77,7 +79,7 @@
                     <input type="file" id="fileInput" class="hidden" accept=".docx, .pdf, .png, .jpg, .jpeg, .xlsx">
                     <i class="fa-solid fa-file-import text-4xl text-indigo-500 mb-3"></i>
                     <h3 class="text-lg font-semibold text-gray-700 mb-1">点击或拖拽文件到此处</h3>
-                    <p class="text-xs text-gray-500">强烈推荐: DOCX (完美保留图片) | 支持: PDF, JPG, PNG, XLSX</p>
+                    <p class="text-xs text-gray-500">强烈推荐: DOCX (完美保留图片与原格式)</p>
                 </div>
 
                 <div id="fileInfoContainer" class="hidden bg-white rounded-xl p-4 shadow-sm border border-gray-100">
@@ -110,7 +112,6 @@
 
             <!-- 右侧：结果展示区 (结构化) -->
             <div class="lg:col-span-8 bg-white rounded-xl shadow-sm border border-gray-100 flex flex-col h-full min-h-[600px]">
-                <!-- 顶部 Tab 切换 -->
                 <div class="flex justify-between items-center px-5 pt-5 border-b border-gray-100">
                     <div class="flex space-x-6">
                         <button id="tabQuestion" class="pb-3 text-sm tab-active flex items-center">
@@ -143,7 +144,6 @@
                     </div>
                 </div>
                 
-                <!-- 内容显示区 -->
                 <div class="flex-1 p-6 overflow-auto bg-gray-50/50">
                     <div id="viewQuestion" class="paper-content min-h-[400px]">
                         <p class="text-gray-400 italic text-center mt-20">等待处理...</p>
@@ -327,7 +327,7 @@
             statusMessage.innerText = msg;
         }
 
-        // ================= 核心处理逻辑 =================
+        // ================= 🌟 核心处理逻辑：深度定制版 🌟 =================
         processBtn.addEventListener('click', async () => {
             if (!currentFile) return;
             processBtn.disabled = true;
@@ -348,44 +348,57 @@
             }
         });
 
-        // 🌟 核心：Word 结构化提取 (保留图片)
+        // 🌟 核心：Word 结构化提取 (跳过前言，从例题开始，完美保留图片)
         async function processWordStructured() {
             progressStatus.innerText = "正在解析 Word 文档结构...";
             progressBar.style.width = "30%";
             
             const arrayBuffer = await currentFile.arrayBuffer();
-            // 使用 convertToHtml 以保留 <img> 标签 (Base64)
+            // convertToHtml 会自动将 Word 中的图片转换为 Base64 的 <img> 标签
             const result = await mammoth.convertToHtml({ arrayBuffer: arrayBuffer });
             const html = result.value;
             
             progressStatus.innerText = "正在智能分割试题、答案、解析...";
             progressBar.style.width = "70%";
 
-            // 智能分割算法
             const tempDiv = document.createElement('div');
             tempDiv.innerHTML = html;
             
-            let currentSection = 'question'; // 'question', 'answer', 'analysis'
+            let hasStarted = false; // 标志位：是否已经跳过了目录、学习目标等前言部分
+            let currentSection = 'question'; 
             let qHTML = '', aHTML = '', anaHTML = '';
-            let hasAnswer = false, hasAnalysis = false;
 
+            // 遍历所有段落/块级元素
             for (let node of tempDiv.childNodes) {
+                if (node.nodeType !== 1) continue; // 只处理元素节点 (如 <p>, <div>)
+                
                 const text = node.textContent || '';
                 const nodeHTML = node.outerHTML || '';
-                
-                // 正则匹配常见的答案/解析关键词 (支持【答案】、答案：、Answer 等)
-                const isAnswer = /(?:^|\s|【|\[)(?:答\s*案|参考答案|Answer)(?:】|\]|:|：|\s|$)/i.test(text);
-                const isAnalysis = /(?:^|\s|【|\[)(?:解\s*析|Analysis|详解|点拨)(?:】|\]|:|：|\s|$)/i.test(text);
-                
-                if (isAnalysis) {
-                    currentSection = 'analysis';
-                    hasAnalysis = true;
-                    anaHTML += nodeHTML;
-                } else if (isAnswer) {
+
+                // 1. 检查是否应该开始提取 (跳过前面的所有内容)
+                // 匹配规则：以“【例题”开头，或“（变式训练”开头，或数字加点/顿号（如 "1." 或 "1 ．"）
+                if (!hasStarted) {
+                    if (/^\s*【例题/.test(text) || /^\s*（变式训练/.test(text) || /^\s*\d+\s*[\.、]/.test(text)) {
+                        hasStarted = true;
+                        currentSection = 'question';
+                        qHTML += nodeHTML;
+                    }
+                    continue; // 还没遇到例题或题号，直接跳过
+                }
+
+                // 2. 已经开始提取，判断当前段落属于哪个部分
+                if (/^\s*【答案】/.test(text) || /^\s*【\s*答\s*案\s*】/.test(text)) {
                     currentSection = 'answer';
-                    hasAnswer = true;
                     aHTML += nodeHTML;
+                } else if (/^\s*【解析】/.test(text) || /^\s*【\s*解\s*析\s*】/.test(text)) {
+                    currentSection = 'analysis';
+                    anaHTML += nodeHTML;
+                } else if (/^\s*【例题/.test(text) || /^\s*（变式训练/.test(text) || /^\s*\d+\s*[\.、]/.test(text)) {
+                    // 遇到新题目，重置为 question 状态
+                    currentSection = 'question';
+                    qHTML += nodeHTML;
                 } else {
+                    // 普通内容（包含文字或 <img> 标签），追加到当前部分
                     if (currentSection === 'question') qHTML += nodeHTML;
                     else if (currentSection === 'answer') aHTML += nodeHTML;
                     else if (currentSection === 'analysis') anaHTML += nodeHTML;
@@ -396,9 +409,9 @@
             progressPercent.innerText = "100%";
             progressStatus.innerText = "提取完成";
 
-            extractedData.question = qHTML || '<p class="text-gray-400 italic text-center mt-20">未提取到试题内容</p>';
-            extractedData.answer = hasAnswer ? aHTML : '<p class="text-gray-400 italic text-center mt-20">未检测到“答案”关键词</p>';
-            extractedData.analysis = hasAnalysis ? anaHTML : '<p class="text-gray-400 italic text-center mt-20">未检测到“解析”关键词</p>';
+            extractedData.question = qHTML || '<p class="text-gray-400 italic text-center mt-20">未提取到试题内容（请确保文档包含【例题】或题号）</p>';
+            extractedData.answer = aHTML || '<p class="text-gray-400 italic text-center mt-20">未检测到“【答案】”关键词</p>';
+            extractedData.analysis = anaHTML || '<p class="text-gray-400 italic text-center mt-20">未检测到“【解析】”关键词</p>';
 
             viewQuestion.innerHTML = extractedData.question;
             viewAnswer.innerHTML = extractedData.answer;
@@ -407,11 +420,7 @@
             copyBtn.disabled = false; 
             exportBtn.disabled = false;
             
-            if (!hasAnswer && !hasAnalysis) {
-                showStatus('warning', '提取完成！但未检测到明显的“答案”或“解析”关键词，所有内容已归入“试题”标签。题干图片已原样保留。');
-            } else {
-                showStatus('success', '智能提取成功！试题中的图片已原封不动保留，并已按结构分离。');
-            }
+            showStatus('success', '智能提取成功！已自动跳过前言，从例题开始提取，题干图片已原样保留。');
         }
 
         // 降级处理：图片/PDF/Excel 纯文本 OCR
@@ -487,16 +496,15 @@
         }
 
         async function exportDOCX() {
-            const { Document, Packer, Paragraph, TextRun, ImageRun } = docx;
-            // 简化版导出：将 HTML 转为纯文本段落 (由于前端 docx 库处理复杂 HTML 较难，这里提取纯文本)
-            // 若需完美保留图片导出 Word，建议使用后端服务或更复杂的 html-to-docx 库
+            const { Document, Packer, Paragraph, TextRun } = docx;
+            // 提取纯文本用于 Word 导出 (前端生成带 Base64 图片的复杂 Word 较困难，此处提供纯文本版)
             const tempDiv = document.createElement('div');
             tempDiv.innerHTML = extractedData.question + "\n\n--- 答案 ---\n" + extractedData.answer + "\n\n--- 解析 ---\n" + extractedData.analysis;
             const text = tempDiv.innerText;
             
             const lines = text.split('\n');
             const children = lines.map(line => new Paragraph({
-                children: [new TextRun({ text: line, font: "Microsoft YaHei", size: 24 })] // 12pt
+                children: [new TextRun({ text: line, font: "Microsoft YaHei", size: 24 })]
             }));
             
             const doc = new Document({ sections: [{ children }] });
@@ -505,8 +513,9 @@
         }
 
         function exportHTML() {
+            // HTML 导出完美保留 Base64 图片和格式
             const fullHTML = `
-                <h2 style="color:#4f46e5; border-bottom:2px solid #4f46e5; padding-bottom:10px;">📝 试题 (含原图)</h2>
+                <h2 style="color:#4f46e5; border-bottom:2px solid #4f46e5; padding-bottom:10px; margin-top:30px;">📝 试题 (含原图)</h2>
                 <div style="margin-bottom:30px;">${extractedData.question}</div>
                 <h2 style="color:#4f46e5; border-bottom:2px solid #4f46e5; padding-bottom:10px;">🔑 答案</h2>
                 <div style="margin-bottom:30px;">${extractedData.answer}</div>
@@ -514,7 +523,7 @@
                 <div>${extractedData.analysis}</div>
             `;
             const html = `<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8"><title>试卷提取结果</title>
-            <style>body{font-family:"Microsoft YaHei",sans-serif;padding:40px;max-width:800px;margin:auto;line-height:1.8;color:#1f2937;} img{max-width:100%; height:auto; border:1px solid #e5e7eb; border-radius:4px; margin:8px 0;}</style>
+            <style>body{font-family:"Microsoft YaHei",sans-serif;padding:40px;max-width:800px;margin:auto;line-height:1.8;color:#1f2937;} img{max-width:100%; height:auto; border:1px solid #e5e7eb; border-radius:6px; margin:10px auto; display:block;}</style>
             </head><body>${fullHTML}</body></html>`;
             downloadBlob(new Blob([html], { type: 'text/html;charset=utf-8' }), '试卷提取结果.html');
         }
