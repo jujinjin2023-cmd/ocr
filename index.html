@@ -3,21 +3,17 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>全能多格式文字与符号识别工具</title>
+    <title>智能试卷结构化提取工具</title>
     
     <!-- UI 框架 -->
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     
-    <!-- 核心处理库 (纯前端) -->
+    <!-- 核心处理库 -->
     <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
-    <script src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
-    
-    <!-- 新增：导出功能依赖库 -->
     <script src="https://unpkg.com/docx@8.5.0/build/index.umd.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 
@@ -29,7 +25,25 @@
         .drop-zone.dragover { background-color: #EEF2FF; transform: scale(1.01); }
         .loader { border-top-color: #4F46E5; animation: spinner 1.5s linear infinite; }
         @keyframes spinner { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-        .katex-display { overflow-x: auto; overflow-y: hidden; padding: 10px 0; }
+        
+        /* 试卷内容渲染样式 */
+        .paper-content {
+            font-family: "Microsoft YaHei", "SimSun", sans-serif;
+            line-height: 1.8;
+            color: #1f2937;
+        }
+        .paper-content img {
+            max-width: 100%;
+            height: auto;
+            border: 1px solid #e5e7eb;
+            border-radius: 4px;
+            margin: 8px 0;
+            display: block;
+        }
+        .paper-content p { margin-bottom: 12px; }
+        .tab-active { border-bottom: 2px solid #4f46e5; color: #4f46e5; font-weight: bold; }
+        .tab-inactive { color: #6b7280; }
+        .tab-inactive:hover { color: #374151; }
     </style>
 </head>
 <body class="bg-gray-50 text-gray-800 min-h-screen font-sans">
@@ -37,10 +51,11 @@
     <div class="max-w-6xl mx-auto p-6">
         <header class="text-center mb-8">
             <h1 class="text-3xl font-extrabold text-indigo-700 mb-2">
-                <i class="fa-solid fa-layer-group mr-2"></i>全能多格式识别与导出工具
+                <i class="fa-solid fa-graduation-cap mr-2"></i>智能试卷结构化提取工具
             </h1>
             <p class="text-gray-600 max-w-3xl mx-auto text-sm">
-                支持 <span class="font-bold text-indigo-600">图片、PDF、Word、Excel</span> 识别，并支持导出为 <span class="font-bold text-green-600">TXT、Markdown、Word、PDF、HTML</span>。
+                自动分离 <span class="font-bold text-indigo-600">试题、答案、解析</span>。
+                <span class="font-bold text-green-600">完美保留 Word 文档中的题干图片</span>。
             </p>
         </header>
 
@@ -50,18 +65,19 @@
                 <div id="modePanel" class="bg-white rounded-xl p-5 shadow-sm border border-gray-100 hidden">
                     <label class="block text-sm font-bold text-gray-700 mb-2">处理方式</label>
                     <select id="engineMode" class="w-full border-gray-300 rounded-lg shadow-sm focus:border-indigo-500 focus:ring-indigo-500 p-2.5 border text-sm mb-3"></select>
-                    <div id="mathpixConfig" class="hidden space-y-3 p-3 bg-indigo-50 rounded-lg border border-indigo-100">
-                        <p class="text-xs text-indigo-700 font-semibold">MathPix API (数理化公式精准识别)</p>
-                        <input type="text" id="mathpixAppId" placeholder="App ID" class="w-full text-sm p-2 border rounded">
-                        <input type="text" id="mathpixAppKey" placeholder="App Key" class="w-full text-sm p-2 border rounded">
+                    <div id="wordTip" class="hidden p-3 bg-green-50 rounded-lg border border-green-100 text-xs text-green-800">
+                        <i class="fa-solid fa-circle-check mr-1"></i> 当前格式支持原样保留图片题干，并智能按“答案/解析”关键词分割内容。
+                    </div>
+                    <div id="otherTip" class="hidden p-3 bg-yellow-50 rounded-lg border border-yellow-100 text-xs text-yellow-800">
+                        <i class="fa-solid fa-triangle-exclamation mr-1"></i> 注意：PDF/图片/Excel 无法原样保留图片题干，仅能提取纯文本。建议优先使用 Word 格式。
                     </div>
                 </div>
 
                 <div id="dropZone" class="drop-zone bg-white rounded-xl p-8 text-center cursor-pointer hover:bg-indigo-50">
-                    <input type="file" id="fileInput" class="hidden" accept=".png, .jpg, .jpeg, .webp, .pdf, .docx, .xlsx">
+                    <input type="file" id="fileInput" class="hidden" accept=".docx, .pdf, .png, .jpg, .jpeg, .xlsx">
                     <i class="fa-solid fa-file-import text-4xl text-indigo-500 mb-3"></i>
                     <h3 class="text-lg font-semibold text-gray-700 mb-1">点击或拖拽文件到此处</h3>
-                    <p class="text-xs text-gray-500">支持: JPG, PNG, PDF, DOCX, XLSX</p>
+                    <p class="text-xs text-gray-500">强烈推荐: DOCX (完美保留图片) | 支持: PDF, JPG, PNG, XLSX</p>
                 </div>
 
                 <div id="fileInfoContainer" class="hidden bg-white rounded-xl p-4 shadow-sm border border-gray-100">
@@ -78,7 +94,7 @@
                 </div>
 
                 <button id="processBtn" disabled class="w-full bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white font-bold py-3 px-4 rounded-xl transition duration-200 flex items-center justify-center shadow-md">
-                    <i class="fa-solid fa-bolt mr-2"></i> <span id="processBtnText">开始处理</span>
+                    <i class="fa-solid fa-wand-magic-sparkles mr-2"></i> <span id="processBtnText">开始智能提取</span>
                 </button>
 
                 <div id="progressContainer" class="hidden bg-white rounded-xl p-4 shadow-sm border border-gray-100">
@@ -92,47 +108,52 @@
                 </div>
             </div>
 
-            <!-- 右侧：结果展示区 -->
+            <!-- 右侧：结果展示区 (结构化) -->
             <div class="lg:col-span-8 bg-white rounded-xl shadow-sm border border-gray-100 flex flex-col h-full min-h-[600px]">
-                <div class="flex justify-between items-center p-5 border-b border-gray-100">
-                    <div class="flex space-x-4">
-                        <button id="tabRaw" class="text-indigo-600 font-bold border-b-2 border-indigo-600 pb-1 text-sm">提取结果</button>
-                        <button id="tabRender" class="text-gray-500 hover:text-gray-700 font-medium pb-1 text-sm hidden">可视化渲染</button>
-                    </div>
-                    <div class="flex items-center space-x-3">
-                        <button id="copyBtn" class="text-indigo-600 hover:text-indigo-800 text-sm font-medium disabled:opacity-50" disabled>
-                            <i class="fa-regular fa-copy mr-1"></i> 复制
+                <!-- 顶部 Tab 切换 -->
+                <div class="flex justify-between items-center px-5 pt-5 border-b border-gray-100">
+                    <div class="flex space-x-6">
+                        <button id="tabQuestion" class="pb-3 text-sm tab-active flex items-center">
+                            <i class="fa-solid fa-file-pen mr-2"></i> 试题 (含原图)
                         </button>
-                        
-                        <!-- 新增：导出按钮及下拉菜单 -->
+                        <button id="tabAnswer" class="pb-3 text-sm tab-inactive flex items-center">
+                            <i class="fa-solid fa-key mr-2"></i> 答案
+                        </button>
+                        <button id="tabAnalysis" class="pb-3 text-sm tab-inactive flex items-center">
+                            <i class="fa-solid fa-lightbulb mr-2"></i> 解析
+                        </button>
+                    </div>
+                    <div class="flex items-center space-x-3 pb-3">
+                        <button id="copyBtn" class="text-indigo-600 hover:text-indigo-800 text-sm font-medium disabled:opacity-50" disabled>
+                            <i class="fa-regular fa-copy mr-1"></i> 复制当前页
+                        </button>
                         <div class="relative">
                             <button id="exportBtn" class="bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-300 text-white text-sm font-medium py-1.5 px-3 rounded-lg disabled:cursor-not-allowed flex items-center shadow-sm" disabled>
                                 <i class="fa-solid fa-download mr-1.5"></i> 导出
                             </button>
-                            <div id="exportMenu" class="hidden absolute right-0 mt-2 w-44 bg-white rounded-lg shadow-lg border border-gray-200 z-20 overflow-hidden">
-                                <button data-format="txt" class="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-indigo-50 hover:text-indigo-700 flex items-center transition">
-                                    <i class="fa-solid fa-file-lines w-5 text-gray-400"></i> TXT 纯文本
-                                </button>
-                                <button data-format="md" class="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-indigo-50 hover:text-indigo-700 flex items-center transition">
-                                    <i class="fa-brands fa-markdown w-5 text-gray-400"></i> Markdown
-                                </button>
+                            <div id="exportMenu" class="hidden absolute right-0 mt-2 w-40 bg-white rounded-lg shadow-lg border border-gray-200 z-20 overflow-hidden">
                                 <button data-format="docx" class="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-indigo-50 hover:text-indigo-700 flex items-center transition">
-                                    <i class="fa-solid fa-file-word w-5 text-blue-500"></i> Word 文档
-                                </button>
-                                <button data-format="pdf" class="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-indigo-50 hover:text-indigo-700 flex items-center transition">
-                                    <i class="fa-solid fa-file-pdf w-5 text-red-500"></i> PDF 文档
+                                    <i class="fa-solid fa-file-word w-5 text-blue-500"></i> Word
                                 </button>
                                 <button data-format="html" class="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-indigo-50 hover:text-indigo-700 flex items-center transition">
-                                    <i class="fa-solid fa-file-code w-5 text-orange-500"></i> HTML 网页
+                                    <i class="fa-solid fa-file-code w-5 text-orange-500"></i> HTML
                                 </button>
                             </div>
                         </div>
                     </div>
                 </div>
                 
-                <div class="flex-1 p-5 relative">
-                    <textarea id="resultText" class="w-full h-full p-4 border border-gray-200 rounded-lg bg-gray-50 text-gray-800 font-mono text-sm resize-none focus:outline-none focus:ring-2 focus:ring-indigo-500" placeholder="处理结果将显示在这里..." readonly></textarea>
-                    <div id="renderView" class="hidden w-full h-full p-4 overflow-auto bg-gray-50 rounded-lg border border-gray-200 text-lg"></div>
+                <!-- 内容显示区 -->
+                <div class="flex-1 p-6 overflow-auto bg-gray-50/50">
+                    <div id="viewQuestion" class="paper-content min-h-[400px]">
+                        <p class="text-gray-400 italic text-center mt-20">等待处理...</p>
+                    </div>
+                    <div id="viewAnswer" class="paper-content min-h-[400px] hidden">
+                        <p class="text-gray-400 italic text-center mt-20">等待处理...</p>
+                    </div>
+                    <div id="viewAnalysis" class="paper-content min-h-[400px] hidden">
+                        <p class="text-gray-400 italic text-center mt-20">等待处理...</p>
+                    </div>
                 </div>
 
                 <div id="statusBox" class="hidden m-5 p-3 rounded-lg text-sm flex items-start">
@@ -146,7 +167,7 @@
     <script>
         pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
-        // DOM 元素获取
+        // DOM 元素
         const dropZone = document.getElementById('dropZone');
         const fileInput = document.getElementById('fileInput');
         const fileInfoContainer = document.getElementById('fileInfoContainer');
@@ -155,29 +176,32 @@
         const fileIcon = document.getElementById('fileIcon');
         const modePanel = document.getElementById('modePanel');
         const engineMode = document.getElementById('engineMode');
-        const mathpixConfig = document.getElementById('mathpixConfig');
+        const wordTip = document.getElementById('wordTip');
+        const otherTip = document.getElementById('otherTip');
         const processBtn = document.getElementById('processBtn');
         const clearBtn = document.getElementById('clearBtn');
         const progressContainer = document.getElementById('progressContainer');
         const progressBar = document.getElementById('progressBar');
         const progressStatus = document.getElementById('progressStatus');
         const progressPercent = document.getElementById('progressPercent');
-        const resultText = document.getElementById('resultText');
-        const renderView = document.getElementById('renderView');
-        const tabRaw = document.getElementById('tabRaw');
-        const tabRender = document.getElementById('tabRender');
+        
+        const tabQuestion = document.getElementById('tabQuestion');
+        const tabAnswer = document.getElementById('tabAnswer');
+        const tabAnalysis = document.getElementById('tabAnalysis');
+        const viewQuestion = document.getElementById('viewQuestion');
+        const viewAnswer = document.getElementById('viewAnswer');
+        const viewAnalysis = document.getElementById('viewAnalysis');
+        
         const copyBtn = document.getElementById('copyBtn');
+        const exportBtn = document.getElementById('exportBtn');
+        const exportMenu = document.getElementById('exportMenu');
         const statusBox = document.getElementById('statusBox');
         const statusMessage = document.getElementById('statusMessage');
         const statusIcon = document.getElementById('statusIcon');
-        
-        // 新增导出相关 DOM
-        const exportBtn = document.getElementById('exportBtn');
-        const exportMenu = document.getElementById('exportMenu');
 
         let currentFile = null;
         let currentFileType = '';
-        let currentLatex = '';
+        let extractedData = { question: '', answer: '', analysis: '' };
 
         // ================= 拖拽防护 =================
         window.addEventListener('dragover', (e) => e.preventDefault(), false);
@@ -192,12 +216,8 @@
         fileInput.addEventListener('change', (e) => { if (e.target.files.length) handleFile(e.target.files[0]); });
 
         // ================= 导出菜单逻辑 =================
-        exportBtn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            exportMenu.classList.toggle('hidden');
-        });
+        exportBtn.addEventListener('click', (e) => { e.stopPropagation(); exportMenu.classList.toggle('hidden'); });
         document.addEventListener('click', () => exportMenu.classList.add('hidden'));
-        
         exportMenu.addEventListener('click', (e) => {
             const btn = e.target.closest('button[data-format]');
             if (!btn) return;
@@ -216,27 +236,50 @@
         function handleFile(file) {
             currentFile = file;
             const ext = file.name.split('.').pop().toLowerCase();
-            if (['jpg', 'jpeg', 'png', 'webp'].includes(ext)) { currentFileType = 'image'; fileIcon.className = 'fa-solid fa-image text-2xl text-blue-500'; setupModePanel('image'); } 
-            else if (ext === 'pdf') { currentFileType = 'pdf'; fileIcon.className = 'fa-solid fa-file-pdf text-2xl text-red-500'; setupModePanel('pdf'); } 
-            else if (ext === 'docx') { currentFileType = 'word'; fileIcon.className = 'fa-solid fa-file-word text-2xl text-blue-700'; setupModePanel('word'); } 
-            else if (ext === 'xlsx') { currentFileType = 'excel'; fileIcon.className = 'fa-solid fa-file-excel text-2xl text-green-600'; setupModePanel('excel'); } 
-            else { alert('不支持的格式'); return; }
+            
+            if (ext === 'docx') { 
+                currentFileType = 'word'; 
+                fileIcon.className = 'fa-solid fa-file-word text-2xl text-blue-700'; 
+                setupModePanel('word');
+            } else if (['jpg', 'jpeg', 'png'].includes(ext)) { 
+                currentFileType = 'image'; 
+                fileIcon.className = 'fa-solid fa-image text-2xl text-blue-500'; 
+                setupModePanel('image');
+            } else if (ext === 'pdf') { 
+                currentFileType = 'pdf'; 
+                fileIcon.className = 'fa-solid fa-file-pdf text-2xl text-red-500'; 
+                setupModePanel('pdf');
+            } else if (ext === 'xlsx') { 
+                currentFileType = 'excel'; 
+                fileIcon.className = 'fa-solid fa-file-excel text-2xl text-green-600'; 
+                setupModePanel('excel');
+            } else { 
+                alert('不支持的格式。请使用 DOCX, PDF, JPG, PNG 或 XLSX。'); 
+                return; 
+            }
 
-            fileName.innerText = file.name; fileSize.innerText = formatBytes(file.size);
-            fileInfoContainer.classList.remove('hidden'); modePanel.classList.remove('hidden');
-            processBtn.disabled = false; resetResult();
+            fileName.innerText = file.name; 
+            fileSize.innerText = formatBytes(file.size);
+            fileInfoContainer.classList.remove('hidden'); 
+            modePanel.classList.remove('hidden');
+            processBtn.disabled = false; 
+            resetResult();
         }
 
         function setupModePanel(type) {
-            engineMode.innerHTML = ''; mathpixConfig.classList.add('hidden'); tabRender.classList.add('hidden');
-            if (type === 'image' || type === 'pdf') {
-                engineMode.add(new Option('🆓 通用 OCR 识别', 'tesseract'));
-                engineMode.add(new Option('👑 专业公式识别 (MathPix)', 'mathpix'));
-            } else if (type === 'word') engineMode.add(new Option('⚡ 直接提取原生文本', 'extract'));
-            else if (type === 'excel') engineMode.add(new Option('⚡ 直接解析表格数据', 'extract'));
+            engineMode.innerHTML = '';
+            wordTip.classList.add('hidden');
+            otherTip.classList.add('hidden');
+
+            if (type === 'word') {
+                engineMode.add(new Option('📑 智能试卷结构化提取 (保留图片)', 'structured'));
+                wordTip.classList.remove('hidden');
+            } else {
+                engineMode.add(new Option('🆓 通用纯文本 OCR 识别', 'tesseract'));
+                otherTip.classList.remove('hidden');
+            }
         }
 
-        engineMode.addEventListener('change', () => mathpixConfig.classList.toggle('hidden', engineMode.value !== 'mathpix'));
         clearBtn.addEventListener('click', () => {
             currentFile = null; currentFileType = ''; fileInput.value = '';
             fileInfoContainer.classList.add('hidden'); modePanel.classList.add('hidden');
@@ -244,10 +287,36 @@
         });
 
         function resetResult() {
-            resultText.value = ''; currentLatex = ''; renderView.innerHTML = '';
-            copyBtn.disabled = true; exportBtn.disabled = true; // 禁用导出
+            extractedData = { question: '<p class="text-gray-400 italic text-center mt-20">暂无数据</p>', answer: '<p class="text-gray-400 italic text-center mt-20">暂无数据</p>', analysis: '<p class="text-gray-400 italic text-center mt-20">暂无数据</p>' };
+            viewQuestion.innerHTML = extractedData.question;
+            viewAnswer.innerHTML = extractedData.answer;
+            viewAnalysis.innerHTML = extractedData.analysis;
+            copyBtn.disabled = true; exportBtn.disabled = true;
             statusBox.classList.add('hidden'); progressContainer.classList.add('hidden');
+            switchTab('question');
         }
+
+        function switchTab(tab) {
+            [tabQuestion, tabAnswer, tabAnalysis].forEach(t => {
+                t.className = 'pb-3 text-sm tab-inactive flex items-center';
+            });
+            [viewQuestion, viewAnswer, viewAnalysis].forEach(v => v.classList.add('hidden'));
+            
+            if (tab === 'question') {
+                tabQuestion.className = 'pb-3 text-sm tab-active flex items-center';
+                viewQuestion.classList.remove('hidden');
+            } else if (tab === 'answer') {
+                tabAnswer.className = 'pb-3 text-sm tab-active flex items-center';
+                viewAnswer.classList.remove('hidden');
+            } else {
+                tabAnalysis.className = 'pb-3 text-sm tab-active flex items-center';
+                viewAnalysis.classList.remove('hidden');
+            }
+        }
+
+        tabQuestion.addEventListener('click', () => switchTab('question'));
+        tabAnswer.addEventListener('click', () => switchTab('answer'));
+        tabAnalysis.addEventListener('click', () => switchTab('analysis'));
 
         function showStatus(type, msg) {
             statusBox.classList.remove('hidden', 'bg-blue-50', 'text-blue-800', 'bg-yellow-50', 'text-yellow-800', 'bg-green-50', 'text-green-800');
@@ -258,134 +327,147 @@
             statusMessage.innerText = msg;
         }
 
+        // ================= 核心处理逻辑 =================
         processBtn.addEventListener('click', async () => {
             if (!currentFile) return;
             processBtn.disabled = true;
             processBtn.innerHTML = '<div class="loader ease-linear rounded-full border-2 border-t-2 border-gray-200 h-5 w-5 mr-2"></div> 处理中...';
-            progressContainer.classList.remove('hidden'); resultText.value = '正在处理文件，请稍候...';
+            progressContainer.classList.remove('hidden');
+
             try {
-                if (currentFileType === 'word') await processWord();
-                else if (currentFileType === 'excel') await processExcel();
-                else if (currentFileType === 'image') await processImage();
+                if (currentFileType === 'word') await processWordStructured();
+                else if (currentFileType === 'image') await processWithTesseract(currentFile);
                 else if (currentFileType === 'pdf') await processPDF();
+                else if (currentFileType === 'excel') await processExcel();
             } catch (error) {
-                console.error(error); resultText.value = `处理失败: ${error.message}`;
-                showStatus('warning', '文件处理失败，请检查控制台(F12)。');
+                console.error(error); 
+                showStatus('warning', `处理失败: ${error.message}`);
             } finally {
-                processBtn.disabled = false; processBtn.innerHTML = '<i class="fa-solid fa-bolt mr-2"></i> 开始处理';
+                processBtn.disabled = false; 
+                processBtn.innerHTML = '<i class="fa-solid fa-wand-magic-sparkles mr-2"></i> 开始智能提取';
             }
         });
 
-        async function processWord() {
-            progressStatus.innerText = "正在解析 Word..."; progressBar.style.width = "50%";
-            const result = await mammoth.extractRawText({ arrayBuffer: await currentFile.arrayBuffer() });
-            progressBar.style.width = "100%"; progressPercent.innerText = "100%"; progressStatus.innerText = "提取完成";
-            resultText.value = result.value.trim() || "未找到文本。";
-            copyBtn.disabled = false; exportBtn.disabled = false; // 启用导出
-            showStatus('success', `Word 提取成功！`);
+        // 🌟 核心：Word 结构化提取 (保留图片)
+        async function processWordStructured() {
+            progressStatus.innerText = "正在解析 Word 文档结构...";
+            progressBar.style.width = "30%";
+            
+            const arrayBuffer = await currentFile.arrayBuffer();
+            // 使用 convertToHtml 以保留 <img> 标签 (Base64)
+            const result = await mammoth.convertToHtml({ arrayBuffer: arrayBuffer });
+            const html = result.value;
+            
+            progressStatus.innerText = "正在智能分割试题、答案、解析...";
+            progressBar.style.width = "70%";
+
+            // 智能分割算法
+            const tempDiv = document.createElement('div');
+            tempDiv.innerHTML = html;
+            
+            let currentSection = 'question'; // 'question', 'answer', 'analysis'
+            let qHTML = '', aHTML = '', anaHTML = '';
+            let hasAnswer = false, hasAnalysis = false;
+
+            for (let node of tempDiv.childNodes) {
+                const text = node.textContent || '';
+                const nodeHTML = node.outerHTML || '';
+                
+                // 正则匹配常见的答案/解析关键词 (支持【答案】、答案：、Answer 等)
+                const isAnswer = /(?:^|\s|【|\[)(?:答\s*案|参考答案|Answer)(?:】|\]|:|：|\s|$)/i.test(text);
+                const isAnalysis = /(?:^|\s|【|\[)(?:解\s*析|Analysis|详解|点拨)(?:】|\]|:|：|\s|$)/i.test(text);
+                
+                if (isAnalysis) {
+                    currentSection = 'analysis';
+                    hasAnalysis = true;
+                    anaHTML += nodeHTML;
+                } else if (isAnswer) {
+                    currentSection = 'answer';
+                    hasAnswer = true;
+                    aHTML += nodeHTML;
+                } else {
+                    if (currentSection === 'question') qHTML += nodeHTML;
+                    else if (currentSection === 'answer') aHTML += nodeHTML;
+                    else if (currentSection === 'analysis') anaHTML += nodeHTML;
+                }
+            }
+
+            progressBar.style.width = "100%";
+            progressPercent.innerText = "100%";
+            progressStatus.innerText = "提取完成";
+
+            extractedData.question = qHTML || '<p class="text-gray-400 italic text-center mt-20">未提取到试题内容</p>';
+            extractedData.answer = hasAnswer ? aHTML : '<p class="text-gray-400 italic text-center mt-20">未检测到“答案”关键词</p>';
+            extractedData.analysis = hasAnalysis ? anaHTML : '<p class="text-gray-400 italic text-center mt-20">未检测到“解析”关键词</p>';
+
+            viewQuestion.innerHTML = extractedData.question;
+            viewAnswer.innerHTML = extractedData.answer;
+            viewAnalysis.innerHTML = extractedData.analysis;
+
+            copyBtn.disabled = false; 
+            exportBtn.disabled = false;
+            
+            if (!hasAnswer && !hasAnalysis) {
+                showStatus('warning', '提取完成！但未检测到明显的“答案”或“解析”关键词，所有内容已归入“试题”标签。题干图片已原样保留。');
+            } else {
+                showStatus('success', '智能提取成功！试题中的图片已原封不动保留，并已按结构分离。');
+            }
         }
 
-        async function processExcel() {
-            progressStatus.innerText = "正在读取 Excel..."; progressBar.style.width = "50%";
-            const workbook = XLSX.read(await currentFile.arrayBuffer(), { type: 'array' });
-            let output = [];
-            workbook.SheetNames.forEach(name => {
-                output.push(`\n--- 工作表: ${name} ---\n`);
-                XLSX.utils.sheet_to_json(workbook.Sheets[name], { header: 1, defval: "" }).forEach(row => {
-                    if (row.some(cell => cell !== "")) output.push(row.join(" | "));
-                });
+        // 降级处理：图片/PDF/Excel 纯文本 OCR
+        async function processWithTesseract(file) {
+            progressStatus.innerText = "AI 正在识别文字 (注意：无法保留原图)...";
+            const { data: { text, confidence } } = await Tesseract.recognize(URL.createObjectURL(file), 'chi_sim+eng', {
+                logger: m => {
+                    if (m.status === 'recognizing text') {
+                        const pct = Math.round(m.progress * 100);
+                        progressBar.style.width = `${pct}%`; progressPercent.innerText = `${pct}%`;
+                        progressStatus.innerText = `识别中: ${pct}%`;
+                    } else progressStatus.innerText = m.status;
+                }
             });
-            progressBar.style.width = "100%"; progressPercent.innerText = "100%"; progressStatus.innerText = "解析完成";
-            resultText.value = output.join('\n').trim() || "未找到数据。";
+            
+            const formattedText = text.trim().replace(/\n/g, '<br>');
+            extractedData.question = formattedText || '<p class="text-gray-400">未识别到内容</p>';
+            viewQuestion.innerHTML = extractedData.question;
             copyBtn.disabled = false; exportBtn.disabled = false;
-            showStatus('success', 'Excel 解析成功！');
-        }
-
-        async function processImage() {
-            if (engineMode.value === 'mathpix') await processWithMathPix(currentFile);
-            else await processWithTesseract(currentFile);
+            showStatus(confidence < 70 ? 'warning' : 'success', `纯文本识别完成！置信度: ${Math.round(confidence)}%。注意：此模式无法保留原图题干。`);
         }
 
         async function processPDF() {
-            progressStatus.innerText = "正在加载 PDF..."; progressBar.style.width = "20%";
+            progressStatus.innerText = "正在渲染 PDF 为图像...";
+            progressBar.style.width = "40%";
             const pdf = await pdfjsLib.getDocument({ data: await currentFile.arrayBuffer() }).promise;
-            progressStatus.innerText = `渲染第 1 页...`; progressBar.style.width = "40%";
             const page = await pdf.getPage(1);
             const viewport = page.getViewport({ scale: 2.0 });
             const canvas = document.createElement('canvas');
             canvas.height = viewport.height; canvas.width = viewport.width;
             await page.render({ canvasContext: canvas.getContext('2d'), viewport: viewport }).promise;
+            
             progressBar.style.width = "60%";
             canvas.toBlob(async (blob) => {
-                const imgFile = new File([blob], "pdf.png", { type: "image/png" });
-                if (engineMode.value === 'mathpix') await processWithMathPix(imgFile);
-                else await processWithTesseract(imgFile);
+                await processWithTesseract(new File([blob], "pdf.png", { type: "image/png" }));
             }, 'image/png');
         }
 
-        async function processWithTesseract(file) {
-            try {
-                const { data: { text, confidence } } = await Tesseract.recognize(URL.createObjectURL(file), 'chi_sim+eng', {
-                    logger: m => {
-                        if (m.status === 'recognizing text') {
-                            const pct = Math.round(m.progress * 100);
-                            progressBar.style.width = `${pct}%`; progressPercent.innerText = `${pct}%`;
-                            progressStatus.innerText = `AI 识别中: ${pct}%`;
-                        } else progressStatus.innerText = m.status;
-                    }
+        async function processExcel() {
+            progressStatus.innerText = "正在读取 Excel...";
+            const workbook = XLSX.read(await currentFile.arrayBuffer(), { type: 'array' });
+            let output = [];
+            workbook.SheetNames.forEach(name => {
+                output.push(`<strong>工作表: ${name}</strong><br>`);
+                XLSX.utils.sheet_to_json(workbook.Sheets[name], { header: 1, defval: "" }).forEach(row => {
+                    if (row.some(cell => cell !== "")) output.push(row.join(" | ") + "<br>");
                 });
-                resultText.value = text.trim() || "未识别到内容。";
-                copyBtn.disabled = false; exportBtn.disabled = false;
-                showStatus(confidence < 70 ? 'warning' : 'success', `识别完成！置信度: ${Math.round(confidence)}%`);
-            } catch (err) { throw new Error("Tesseract 失败: " + err.message); }
-        }
-
-        async function processWithMathPix(file) {
-            const appId = document.getElementById('mathpixAppId').value.trim();
-            const appKey = document.getElementById('mathpixAppKey').value.trim();
-            if (!appId || !appKey) throw new Error("请填写 MathPix API Key");
-            progressStatus.innerText = "上传至专业引擎..."; progressBar.style.width = "50%";
-            const base64 = await new Promise(r => { const reader = new FileReader(); reader.onloadend = () => r(reader.result.split(',')[1]); reader.readAsDataURL(file); });
-            progressStatus.innerText = "解析公式结构..."; progressBar.style.width = "75%";
-            const res = await fetch('https://api.mathpix.com/v3/text', {
-                method: 'POST', headers: { 'app_id': appId, 'app_key': appKey, 'Content-Type': 'application/json' },
-                body: JSON.stringify({ src: `data:image/jpeg;base64,${base64}`, formats: ['text', 'latex_styled'] })
             });
-            if (!res.ok) throw new Error(`API 失败: ${res.status}`);
-            const data = await res.json();
-            currentLatex = data.latex_styled || data.text || "未识别到公式";
-            progressBar.style.width = "100%"; progressPercent.innerText = "100%"; progressStatus.innerText = "完成！";
-            resultText.value = currentLatex;
+            extractedData.question = output.join('') || '<p class="text-gray-400">未找到数据</p>';
+            viewQuestion.innerHTML = extractedData.question;
+            progressBar.style.width = "100%"; progressPercent.innerText = "100%";
             copyBtn.disabled = false; exportBtn.disabled = false;
-            tabRender.classList.remove('hidden');
-            showStatus('success', '专业识别成功！');
-            renderLatex(currentLatex);
+            showStatus('success', 'Excel 解析成功！(注：Excel 中的图片无法通过前端提取)');
         }
 
-        function renderLatex(latex) {
-            try { renderView.innerHTML = ''; katex.render(latex, renderView, { throwOnError: false, displayMode: true }); } 
-            catch (e) { renderView.innerHTML = `<p class="text-red-500">渲染失败: ${e.message}</p>`; }
-        }
-
-        tabRaw.addEventListener('click', () => {
-            tabRaw.className = 'text-indigo-600 font-bold border-b-2 border-indigo-600 pb-1 text-sm';
-            tabRender.className = 'text-gray-500 hover:text-gray-700 font-medium pb-1 text-sm';
-            resultText.classList.remove('hidden'); renderView.classList.add('hidden');
-        });
-        tabRender.addEventListener('click', () => {
-            tabRender.className = 'text-indigo-600 font-bold border-b-2 border-indigo-600 pb-1 text-sm';
-            tabRaw.className = 'text-gray-500 hover:text-gray-700 font-medium pb-1 text-sm';
-            resultText.classList.add('hidden'); renderView.classList.remove('hidden');
-            if (currentLatex && engineMode.value === 'mathpix') renderLatex(currentLatex);
-        });
-
-        copyBtn.addEventListener('click', () => {
-            resultText.select(); document.execCommand('copy');
-            const orig = copyBtn.innerHTML; copyBtn.innerHTML = '<i class="fa-solid fa-check mr-1"></i> 已复制';
-            setTimeout(() => { copyBtn.innerHTML = orig; }, 2000);
-        });
-
-        // ================= 核心新增：多格式导出逻辑 =================
+        // ================= 导出逻辑 =================
         function downloadBlob(blob, filename) {
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a'); a.href = url; a.download = filename;
@@ -394,78 +476,58 @@
         }
 
         async function handleExport(format) {
-            if (!resultText.value && !renderView.innerHTML) { alert('没有可导出的内容！'); return; }
-            showStatus('info', `正在生成 ${format.toUpperCase()} 文件，请稍候...`);
+            showStatus('info', `正在生成 ${format.toUpperCase()} 文件...`);
             try {
-                switch (format) {
-                    case 'txt': exportTXT(); break;
-                    case 'md': exportMarkdown(); break;
-                    case 'docx': await exportDOCX(); break;
-                    case 'pdf': exportPDF(); break;
-                    case 'html': exportHTML(); break;
-                }
-                showStatus('success', `${format.toUpperCase()} 文件已成功导出到您的下载文件夹！`);
+                if (format === 'docx') await exportDOCX();
+                else if (format === 'html') exportHTML();
+                showStatus('success', `${format.toUpperCase()} 文件已导出！`);
             } catch (err) {
-                console.error(err); showStatus('warning', `导出失败: ${err.message}`);
+                showStatus('warning', `导出失败: ${err.message}`);
             }
-        }
-
-        function exportTXT() {
-            const blob = new Blob([resultText.value], { type: 'text/plain;charset=utf-8' });
-            downloadBlob(blob, 'ocr-result.txt');
-        }
-
-        function exportMarkdown() {
-            let content = resultText.value;
-            if (engineMode.value === 'mathpix') content = `$$\n${content}\n$$\n\n> 由全能 OCR 工具导出`;
-            const blob = new Blob([content], { type: 'text/markdown;charset=utf-8' });
-            downloadBlob(blob, 'ocr-result.md');
         }
 
         async function exportDOCX() {
-            const { Document, Packer, Paragraph, TextRun } = docx;
-            const lines = resultText.value.split('\n');
+            const { Document, Packer, Paragraph, TextRun, ImageRun } = docx;
+            // 简化版导出：将 HTML 转为纯文本段落 (由于前端 docx 库处理复杂 HTML 较难，这里提取纯文本)
+            // 若需完美保留图片导出 Word，建议使用后端服务或更复杂的 html-to-docx 库
+            const tempDiv = document.createElement('div');
+            tempDiv.innerHTML = extractedData.question + "\n\n--- 答案 ---\n" + extractedData.answer + "\n\n--- 解析 ---\n" + extractedData.analysis;
+            const text = tempDiv.innerText;
+            
+            const lines = text.split('\n');
             const children = lines.map(line => new Paragraph({
-                children: [new TextRun({ text: line, font: "Microsoft YaHei" })]
+                children: [new TextRun({ text: line, font: "Microsoft YaHei", size: 24 })] // 12pt
             }));
+            
             const doc = new Document({ sections: [{ children }] });
             const blob = await Packer.toBlob(doc);
-            downloadBlob(blob, 'ocr-result.docx');
-        }
-
-        function exportPDF() {
-            const element = document.createElement('div');
-            element.style.padding = '20px'; element.style.fontFamily = 'sans-serif'; 
-            element.style.fontSize = '16px'; element.style.color = '#333'; element.style.lineHeight = '1.5';
-            
-            // 优先使用渲染后的视图（包含漂亮的公式），如果没有则使用纯文本
-            if (renderView.innerHTML && !renderView.innerHTML.includes('暂无渲染内容')) {
-                element.innerHTML = renderView.innerHTML;
-            } else {
-                element.innerHTML = `<pre style="white-space: pre-wrap; word-wrap: break-word; font-family: sans-serif;">${resultText.value}</pre>`;
-            }
-            
-            element.style.position = 'absolute'; element.style.left = '-9999px';
-            document.body.appendChild(element);
-
-            const opt = {
-                margin: 10, filename: 'ocr-result.pdf',
-                image: { type: 'jpeg', quality: 0.98 },
-                html2canvas: { scale: 2, useCORS: true, logging: false },
-                jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
-            };
-            html2pdf().set(opt).from(element).save().then(() => document.body.removeChild(element));
+            downloadBlob(blob, '试卷提取结果.docx');
         }
 
         function exportHTML() {
-            const content = renderView.innerHTML && !renderView.innerHTML.includes('暂无渲染内容') ? renderView.innerHTML : `<pre>${resultText.value}</pre>`;
-            const html = `<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8"><title>OCR 结果</title>
-            <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
-            <style>body{font-family:sans-serif;padding:40px;max-width:800px;margin:auto;line-height:1.6;color:#333;}pre{background:#f4f4f4;padding:15px;border-radius:5px;}</style>
-            </head><body><h1>识别结果</h1>${content}</body></html>`;
-            const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
-            downloadBlob(blob, 'ocr-result.html');
+            const fullHTML = `
+                <h2 style="color:#4f46e5; border-bottom:2px solid #4f46e5; padding-bottom:10px;">📝 试题 (含原图)</h2>
+                <div style="margin-bottom:30px;">${extractedData.question}</div>
+                <h2 style="color:#4f46e5; border-bottom:2px solid #4f46e5; padding-bottom:10px;">🔑 答案</h2>
+                <div style="margin-bottom:30px;">${extractedData.answer}</div>
+                <h2 style="color:#4f46e5; border-bottom:2px solid #4f46e5; padding-bottom:10px;">💡 解析</h2>
+                <div>${extractedData.analysis}</div>
+            `;
+            const html = `<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8"><title>试卷提取结果</title>
+            <style>body{font-family:"Microsoft YaHei",sans-serif;padding:40px;max-width:800px;margin:auto;line-height:1.8;color:#1f2937;} img{max-width:100%; height:auto; border:1px solid #e5e7eb; border-radius:4px; margin:8px 0;}</style>
+            </head><body>${fullHTML}</body></html>`;
+            downloadBlob(new Blob([html], { type: 'text/html;charset=utf-8' }), '试卷提取结果.html');
         }
+
+        copyBtn.addEventListener('click', () => {
+            const activeView = viewQuestion.classList.contains('hidden') ? (viewAnswer.classList.contains('hidden') ? viewAnalysis : viewAnswer) : viewQuestion;
+            const textToCopy = activeView.innerText;
+            navigator.clipboard.writeText(textToCopy).then(() => {
+                const orig = copyBtn.innerHTML; 
+                copyBtn.innerHTML = '<i class="fa-solid fa-check mr-1"></i> 已复制';
+                setTimeout(() => { copyBtn.innerHTML = orig; }, 2000);
+            });
+        });
     </script>
 </body>
 </html>
