@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>智能试卷结构化提取工具 (连续排版版)</title>
+    <title>智能试卷结构化提取工具 (精准跳过版)</title>
     
     <!-- UI 框架 -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -25,7 +25,7 @@
         .loader { border-top-color: #4F46E5; animation: spinner 1.5s linear infinite; }
         @keyframes spinner { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
         
-        /* 试卷内容渲染样式：完美保留 Word 原格式与图片 */
+        /* 试卷内容渲染样式 */
         .paper-content {
             font-family: "Microsoft YaHei", "SimSun", sans-serif;
             line-height: 1.8;
@@ -52,7 +52,7 @@
                 <i class="fa-solid fa-graduation-cap mr-2"></i>智能试卷结构化提取工具
             </h1>
             <p class="text-gray-600 max-w-3xl mx-auto text-sm">
-                自动跳过目录/知识梳理，<span class="font-bold text-indigo-600">直接从【例题】开始提取</span>。
+                精准跳过目录/知识梳理，<span class="font-bold text-indigo-600">只从【例题/变式训练】开始提取</span>。
                 <span class="font-bold text-green-600">题-答案-解析按原文顺序连续展示，完美保留图片与原格式</span>。
             </p>
         </header>
@@ -64,7 +64,7 @@
                     <label class="block text-sm font-bold text-gray-700 mb-2">处理方式</label>
                     <select id="engineMode" class="w-full border-gray-300 rounded-lg shadow-sm focus:border-indigo-500 focus:ring-indigo-500 p-2.5 border text-sm mb-3"></select>
                     <div id="wordTip" class="hidden p-3 bg-green-50 rounded-lg border border-green-100 text-xs text-green-800">
-                        <i class="fa-solid fa-circle-check mr-1"></i> 完美支持：自动跳过前言，从例题开始提取，原样保留所有题干图片，按原文顺序排版。
+                        <i class="fa-solid fa-circle-check mr-1"></i> 完美支持：精准跳过前言，只从例题开始，原样保留所有题干图片。
                     </div>
                     <div id="otherTip" class="hidden p-3 bg-yellow-50 rounded-lg border border-yellow-100 text-xs text-yellow-800">
                         <i class="fa-solid fa-triangle-exclamation mr-1"></i> 注意：PDF/图片无法原样保留图片题干，仅能提取纯文本。强烈建议使用 Word (.docx) 格式。
@@ -106,7 +106,7 @@
                 </div>
             </div>
 
-            <!-- 右侧：结果展示区 (统一连续排版) -->
+            <!-- 右侧：结果展示区 -->
             <div class="lg:col-span-8 bg-white rounded-xl shadow-sm border border-gray-100 flex flex-col h-full min-h-[600px]">
                 <div class="flex justify-between items-center px-5 pt-5 border-b border-gray-100">
                     <h2 class="text-lg font-bold text-gray-800 flex items-center">
@@ -280,7 +280,7 @@
             statusMessage.innerText = msg;
         }
 
-        // ================= 🌟 核心处理逻辑 🌟 =================
+        // ================= 🌟 核心处理逻辑：精准跳过版 🌟 =================
         processBtn.addEventListener('click', async () => {
             if (!currentFile) return;
             processBtn.disabled = true;
@@ -301,7 +301,7 @@
             }
         });
 
-        // 🌟 核心：Word 结构化提取 (按原文顺序连续展示)
+        // 🌟 核心：Word 结构化提取 (精准跳过知识梳理)
         async function processWordStructured() {
             progressStatus.innerText = "正在解析 Word 文档结构...";
             progressBar.style.width = "30%";
@@ -310,7 +310,7 @@
             const result = await mammoth.convertToHtml({ arrayBuffer: arrayBuffer });
             const html = result.value;
             
-            progressStatus.innerText = "正在按原文顺序提取内容...";
+            progressStatus.innerText = "正在精准定位例题并提取...";
             progressBar.style.width = "70%";
 
             const tempDiv = document.createElement('div');
@@ -319,16 +319,26 @@
             let hasStarted = false; 
             let unifiedHTML = '';
 
+            // 定义明确的题目开始标志（绝不包含普通的 1. 2. 编号）
+            const startPatterns = [
+                /^\s*【例题/,          // 【例题1】
+                /^\s*例题\s*\d/,       // 例题1
+                /^\s*【变式训练/,      // 【变式训练1】
+                /^\s*（变式训练/,      // （变式训练1）
+                /^\s*【巩固训练】/     // 【巩固训练】
+            ];
+
             for (let node of tempDiv.childNodes) {
                 if (node.nodeType !== 1) continue; 
                 
                 const text = node.textContent || '';
                 const nodeHTML = node.outerHTML || '';
 
-                // 1. 检查是否应该开始提取 (跳过前面的所有内容)
+                // 1. 检查是否应该开始提取
                 if (!hasStarted) {
-                    // 修复逻辑：只有遇到明确的【例题】或【巩固训练】或题号才开始
-                    if (/^\s*【例题/.test(text) || /^\s*【巩固训练】/.test(text) || /^\s*\d+\s*[\.、]/.test(text)) {
+                    // 只有遇到明确的题目标志才开始，彻底避开知识梳理里的 1. 2.
+                    const isStart = startPatterns.some(pattern => pattern.test(text));
+                    if (isStart) {
                         hasStarted = true;
                         unifiedHTML += nodeHTML;
                     }
@@ -343,12 +353,12 @@
             progressPercent.innerText = "100%";
             progressStatus.innerText = "提取完成";
 
-            viewUnified.innerHTML = unifiedHTML || '<p class="text-gray-400 italic text-center mt-20">未提取到内容</p>';
+            viewUnified.innerHTML = unifiedHTML || '<p class="text-gray-400 italic text-center mt-20">未提取到内容（请确保文档包含【例题】或【变式训练】）</p>';
 
             copyBtn.disabled = false; 
             exportBtn.disabled = false;
             
-            showStatus('success', '智能提取成功！已自动跳过知识梳理，从例题开始按原文顺序提取，题干图片已原样保留。');
+            showStatus('success', '智能提取成功！已精准跳过知识梳理，从例题开始按原文顺序提取，题干图片已原样保留。');
         }
 
         // 降级处理：图片/PDF/Excel 纯文本 OCR
@@ -424,7 +434,6 @@
 
         async function exportDOCX() {
             const { Document, Packer, Paragraph, TextRun } = docx;
-            // 提取统一视图的纯文本用于 Word 导出
             const text = viewUnified.innerText;
             const lines = text.split('\n');
             const children = lines.map(line => new Paragraph({
@@ -437,9 +446,6 @@
         }
 
         function exportXLSX() {
-            // 将统一视图的纯文本放入 Excel
-            const text = viewUnified.innerText;
-            // 如果有图片，替换为占位符
             const div = document.createElement('div');
             div.innerHTML = viewUnified.innerHTML;
             div.querySelectorAll('img').forEach(img => {
@@ -454,7 +460,7 @@
             ];
             
             const ws = XLSX.utils.aoa_to_sheet(wsData);
-            ws['!cols'] = [{ wch: 100 }]; // 设置较宽的列
+            ws['!cols'] = [{ wch: 100 }];
 
             const wb = XLSX.utils.book_new();
             XLSX.utils.book_append_sheet(wb, ws, "提取结果");
@@ -462,7 +468,6 @@
         }
 
         function exportHTML() {
-            // HTML 导出完美保留 Base64 图片和格式
             const html = `<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8"><title>试卷提取结果</title>
             <style>body{font-family:"Microsoft YaHei",sans-serif;padding:40px;max-width:800px;margin:auto;line-height:1.8;color:#1f2937;} img{max-width:100%; height:auto; border:1px solid #e5e7eb; border-radius:6px; margin:10px auto; display:block;} p{margin-bottom:12px;}</style>
             </head><body><div class="paper-content">${viewUnified.innerHTML}</div></body></html>`;
